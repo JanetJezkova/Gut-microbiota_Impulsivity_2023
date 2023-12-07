@@ -1,0 +1,182 @@
+---
+title: "Impulsivity_correlations"
+author: "Ježková"
+date: "2023-10-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## DATA HANDLING
+
+```{r cars}
+set.seed(123)
+library(Rcpp)
+library(dada2)
+library(ggplot2)
+library(phyloseq)
+library(dplyr)
+library(glmnet)
+library(missMDA)
+library(factoextra)
+library(tidyverse)
+library(dplyr)
+library(ape)
+library(vegan)
+
+######################################
+###STATISTICS - CORRELATIONS##########
+######################################
+load("D:/SEQ/Impulsivita/Výsledky/PHYLOSEQ.final.R")
+str(sample_data(PHYLOSEQ.final))
+sample_data(PHYLOSEQ.final)$Decily <-as.numeric(sample_data(PHYLOSEQ.final)$Decily)
+sample_data(PHYLOSEQ.final)$R14<-as.factor(sample_data(PHYLOSEQ.final)$R14)
+sample_data(PHYLOSEQ.final)$U<-as.numeric(sample_data(PHYLOSEQ.final)$U)
+sample_data(PHYLOSEQ.final)$P1<-as.numeric(sample_data(PHYLOSEQ.final)$P1)
+sample_data(PHYLOSEQ.final)$P2<-as.numeric(sample_data(PHYLOSEQ.final)$P2)
+sample_data(PHYLOSEQ.final)$S<-as.numeric(sample_data(PHYLOSEQ.final)$S)
+sample_data(PHYLOSEQ.final)$P3<-as.numeric(sample_data(PHYLOSEQ.final)$P3)
+sample_data(PHYLOSEQ.final)$Age<-as.numeric(sample_data(PHYLOSEQ.final)$Age)  
+sample_data(PHYLOSEQ.final)$Strava<-as.numeric(sample_data(PHYLOSEQ.final)$Strava)  
+sample_data(PHYLOSEQ.final)$alkohol<-as.factor(sample_data(PHYLOSEQ.final)$alkohol)
+sample_data(PHYLOSEQ.final)$pervitin<-as.factor(sample_data(PHYLOSEQ.final)$pervitin)
+sample_data(PHYLOSEQ.final)$marihuana<-as.factor(sample_data(PHYLOSEQ.final)$marihuana)
+sample_data(PHYLOSEQ.final)$zavislost<-as.factor(sample_data(PHYLOSEQ.final)$zavislost)
+sample_data(PHYLOSEQ.final)$heredita<-as.factor(sample_data(PHYLOSEQ.final)$heredita)
+sample_data(PHYLOSEQ.final)$viktimizace<-as.factor(sample_data(PHYLOSEQ.final)$viktimizace)
+sample_data(PHYLOSEQ.final)$hepatitida.C<-as.factor(sample_data(PHYLOSEQ.final)$hepatitida.C)
+sample_data(PHYLOSEQ.final)$koureni<-as.factor(sample_data(PHYLOSEQ.final)$koureni)
+sample_data(PHYLOSEQ.final)$alergie<-as.factor(sample_data(PHYLOSEQ.final)$alergie)
+sample_data(PHYLOSEQ.final)$deprese..uzkosti<-as.factor(sample_data(PHYLOSEQ.final)$deprese..uzkosti)
+sample_data(PHYLOSEQ.final)$antidepresiva<-as.factor(sample_data(PHYLOSEQ.final)$antidepresiva)
+sample_data(PHYLOSEQ.final)$antipsychotika<-as.factor(sample_data(PHYLOSEQ.final)$antipsychotika)
+sample_data(PHYLOSEQ.final)$antihypertenziva<-as.factor(sample_data(PHYLOSEQ.final)$antihypertenziva)
+SD<-data.frame(sample_data(PHYLOSEQ.final))
+str(SD)
+# R14 change all 2 to 1
+SD <- SD %>%
+  mutate(R14 = ifelse(R14 == "2", "1", as.character(R14)))
+table(SD$Impulsivity)
+# Creating a dataset without a sample from a control group that had not filled any questionnaires
+SD_woNA <- subset(SD, ID_individual != "54_PB94")
+SD_woNA <- SD %>% filter(ID_individual != "54_PB94")
+table(SD_woNA$Impulsivity)
+# Exclude from phyloseq
+EXCLUDE<-c("54_PB94")
+PHYLOSEQ_woNA<-prune_samples(!sample_names(PHYLOSEQ.final)%in%EXCLUDE,
+                             PHYLOSEQ.final)
+RICH_woNA<-estimate_richness(rarefy_even_depth(PHYLOSEQ_woNA))
+SD<-data.frame(RICH_woNA,SD_woNA)
+table(SD$Impulsivity)
+```
+
+## ALPHA DIVERSITY CORRELATIONS
+
+```{r pressure, echo=FALSE}
+########################
+#Alfa diversity - lasso#
+########################
+DF<-SD[,-c(2,3,4,5,7,8,9,10,11,12)]
+DF<-DF[,-c(4,5,6,7,8,9,21)]
+DATA<-DF[,-c(8,9,10,12,13,14,20)]
+# DATA
+DATA<-na.omit(DATA)
+table(DATA$Impulsivity)
+
+DATA.pred<-DATA[,names(DATA)]
+DATA.pred<-DATA.pred[,-c(1,2,3)]
+rownames(DATA.pred)<-DATA$ID_individual
+# DATA.pred
+DATA.pred<-as.matrix(DATA.pred)
+class(DATA.pred)<-"matrix"
+lambdas_to_try <- 10^seq(-3, 5, length.out = 100)
+# SHANNON
+Shannon<-DATA$Shannon
+str(Shannon)
+lasso_SH <- cv.glmnet(x=DATA.pred, y=Shannon,family="gaussian",
+                       alpha = 1, lambda = lambdas_to_try,
+                       standardize = TRUE, nfolds = 10)
+plot(lasso_SH)
+COEFS.SH<-coef(lasso_SH, lasso_SH$lambda.min)
+COEFS.SH
+# OBSERVED
+Observed<-DATA$Observed
+str(Observed)
+lasso_Observed <- cv.glmnet(x=DATA.pred, y=Observed,family="gaussian",
+                          alpha = 1, lambda = lambdas_to_try,
+                          standardize = TRUE, nfolds = 10)
+plot(lasso_Observed)
+COEFS.Decily<-coef(lasso_Observed, lasso_Observed$lambda.min)
+COEFS.Decily
+
+############################################
+####Alfa diversity - antidepressants########
+############################################
+# Shannon
+hist(Shannon)
+m0<-lm(Shannon~antidepresiva,DATA)
+BC<-MASS::boxcox(m0,lambda = seq(-10, 10, 1/10))
+lamb<-BC$x[BC$y==max(BC$y)]
+if(lamb!=0){Shannon_trans<-(DATA$Shannon^lamb-1)/lamb}
+if(lamb==0){Shannon_trans<-log(DATA$Shannon)}
+hist(Shannon_trans, main = "Shannon po normalizaci")
+QQ<-lm(Shannon_trans~antidepresiva,DATA)
+{qqnorm(resid(QQ))
+  qqline(resid(QQ))}
+summary(QQ)
+anova(QQ)
+m0<-lm(Shannon_trans~1,DATA)
+anova(QQ,m0)
+  
+# Observed 
+hist(Observed)
+m0<-lm(Observed~antidepresiva,DATA)
+anova(m0)
+BC<-MASS::boxcox(m0,lambda = seq(-10, 10, 1/10))
+lamb<-BC$x[BC$y==max(BC$y)]
+if(lamb!=0){Observed_trans<-(DATA$Observed^lamb-1)/lamb}
+if(lamb==0){Observed_trans<-log(DATA$Observed)}
+hist(Observed_trans, main = "Observed po normalizaci")
+QQ<-lm(Observed_trans~antidepresiva,DATA)
+{qqnorm(resid(QQ))
+  qqline(resid(QQ))}
+summary(QQ)
+m0<-lm(Observed_trans~1,SD_woNA)
+anova(QQ,m0)
+car::Anova(QQ)
+```
+## BETA DIVERSITY CORRELATIONS
+
+```{r dogs, echo=FALSE}
+##################################
+###########BETA DIVERSITY#########
+##################################
+###ALL PARAMETERS WITH ORDISTEP###
+##################################
+EXCLUDE_NA<-!is.na(sample_data(PHYLOSEQ_woNA)$Strava)
+PHYLOSEQ.final.sub<-prune_samples(EXCLUDE_NA,PHYLOSEQ_woNA)
+PHYLOSEQ.rare<-rarefy_even_depth(PHYLOSEQ.final.sub)
+PHYLOSEQ.trans<-transform_sample_counts(PHYLOSEQ.final.sub,function(x) x/sum(x))
+BC<-vegdist(otu_table(PHYLOSEQ.trans))
+JA<-vegdist(data.frame(otu_table(PHYLOSEQ.rare)),method = "jaccard")
+SD<-data.frame(sample_data(PHYLOSEQ.rare))
+PC..bc.all<-pcoa(BC,correction = "cailliez")
+PC..ja.all<-pcoa(JA,correction = "cailliez")
+table(SD$Impulsivity)
+RDA.full.bc<-rda(PC..bc.all$vectors~Impulsivity+Decily+Age+BMI+Strava+zavislost+
+                   deprese..uzkosti+antidepresiva+antipsychotika+ alergie+
+                   antihypertenziva,SD)
+RDA.null.bc<-rda(PC..bc.all$vectors~1,SD)
+anova(RDA.full.bc,RDA.null.bc)
+anova.cca(RDA.full.bc,by="margin")
+sel.os <- ordistep (RDA.null.bc, scope = formula (RDA.full.bc), direction = 'forward')
+RDA.full.ja<-rda(PC..ja.all$vectors~Impulsivity+Decily+Age+BMI+Strava+zavislost+
+                   deprese..uzkosti+antidepresiva+antipsychotika+ alergie+
+                   antihypertenziva,SD)
+RDA.null.ja<-rda(PC..ja.all$vectors~1,SD)
+anova(RDA.full.ja,RDA.null.ja)
+anova.cca(RDA.full.ja,by="margin")
+sel.os <- ordistep (RDA.null.ja, scope = formula (RDA.full.ja), direction = 'forward')
+```
